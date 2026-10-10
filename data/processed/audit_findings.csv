@@ -1,0 +1,26 @@
+﻿table,check,value,note
+orders,状态为 delivered 的订单数,96478,筛选漏斗第一级：其余订单为非 delivered 状态，全部排除
+orders,状态为 delivered 但缺送达日期,8,Plan A 可行性的核心输入：这些订单将在筛选漏斗中排除
+orders,时间字段缺失数: order_purchase_timestamp,0,
+orders,时间字段缺失数: order_approved_at,160,
+orders,时间字段缺失数: order_delivered_carrier_date,1783,
+orders,时间字段缺失数: order_delivered_customer_date,2965,
+orders,时间字段缺失数: order_estimated_delivery_date,0,
+orders,批准早于下单（违规）,0,
+orders,顾客送达早于承运商送达（违规）,23,仅记录：预测时点只用顾客送达时间，不影响使用
+reviews,评分分布(1-5),11424 / 3151 / 8179 / 19142 / 57328,对应评分 1-5 的订单数；低评(≤3)占比 22.93%
+reviews,多条评价的订单数,547,标签规则需处理：按最早创建时间取首条
+reviews,孤儿 order_id（不在 orders 表中）,0,
+reviews,review_id 重复行数,814,不影响标签逻辑：按订单内处理，review_id 仅作同刻同分 tiebreak
+items,覆盖订单数,98666 / 99441,775 单无 items 记录：B 聚合后保留缺失标记，不删订单
+items,每单 item 数 min/中位数/max,1 / 1 / 21,B 聚合前的底数
+items,负 price 或 freight_value 行数,0,
+items,product_id 匹配 products 表比例,100.00%,
+payments,覆盖订单数,99440 / 99441,1 单无支付记录：B 合并时保留缺失标记，不删订单
+payments,payment_installments 为 0 的行数,2,
+products,缺 product_category_name 行数,610,
+products,官方字段拼写错误,product_name_lenght / product_description_lenght,"B 使用列名时不要""纠正""拼写"
+products,数值字段为 0 的行数合计,4,
+customers,重复 customer_id 行数,0,
+geolocation,完全重复行数,261831,核心范围不用此表，保持可选
+translation,覆盖 products 类别比例,99.96%,

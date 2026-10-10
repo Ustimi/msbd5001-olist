@@ -1,0 +1,10 @@
+﻿table,file,n_rows,n_cols,n_dup_rows,max_col_missing_pct,cols_with_missing
+orders,olist_orders_dataset.csv,99441,8,0,0.0298,"{'order_approved_at': 0.0016, 'order_delivered_carrier_date': 0.0179, 'order_delivered_customer_date': 0.0298}"
+reviews,olist_order_reviews_dataset.csv,99224,7,0,0.8834,"{'review_comment_title': 0.8834, 'review_comment_message': 0.587}"
+items,olist_order_items_dataset.csv,112650,7,0,0.0,
+payments,olist_order_payments_dataset.csv,103886,5,0,0.0,
+products,olist_products_dataset.csv,32951,9,0,0.0185,"{'product_category_name': 0.0185, 'product_name_lenght': 0.0185, 'product_description_lenght': 0.0185, 'product_photos_qty': 0.0185, 'product_weight_g': 0.0001, 'product_length_cm': 0.0001, 'product_height_cm': 0.0001, 'product_width_cm': 0.0001}"
+customers,olist_customers_dataset.csv,99441,5,0,0.0,
+sellers,olist_sellers_dataset.csv,3095,4,0,0.0,
+geolocation,olist_geolocation_dataset.csv,1000163,5,261831,0.0,
+translation,product_category_name_translation.csv,71,2,0,0.0,

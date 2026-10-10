@@ -1,0 +1,8 @@
+﻿table,join_key,unique,n_unique,n_rows,relationship,action_for_B
+orders,order_id,yes,99441,99441,one_to_one,基础表，直接使用
+reviews,order_id,no,98673,99224,one_to_many,A 已聚合为首评表 labels.parquet（一单一标签），直接用
+items,order_id,no,98666,112650,one_to_many,必须先按 order_id 聚合再合并（每单 1~21 行）
+payments,order_id,no,99440,103886,one_to_many,必须先按 order_id 聚合再合并（每单 1~29 条）
+products,product_id,yes,32951,32951,many_to_one,items 经 product_id 安全连接
+customers,customer_id,yes,99441,99441,many_to_one,orders 经 customer_id 安全连接
+sellers,seller_id,yes,3095,3095,many_to_one,经 items 关联到订单

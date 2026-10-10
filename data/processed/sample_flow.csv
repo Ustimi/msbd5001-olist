@@ -1,0 +1,6 @@
+﻿step,n_after,n_excluded,reason,n_after_check
+start,99441,0,全量订单,99441
+status=delivered,96478,2963,非 delivered 状态,96478
+has_label,95802,676,无评价/评分无效/首评冲突,95802
+valid_delivery_time,95794,8,送达时间缺失/无法解析,95794
+review_after_delivery,87514,8280,首评不晚于送达（含同时刻）,87514

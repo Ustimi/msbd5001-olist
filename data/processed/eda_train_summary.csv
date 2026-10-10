@@ -1,0 +1,9 @@
+﻿metric,train,val,test
+n_orders,61260.0,13127.0,13127.0
+low_rate,0.182239634345413,0.16416546050125694,0.15235773596404356
+n_low,11164.0,2155.0,2000.0
+missing_order_approved_wait_days,14.0,0.0,0.0
+missing_estimated_delivery_days,0.0,0.0,0.0
+missing_purchase_month,0.0,0.0,0.0
+missing_purchase_hour,0.0,0.0,0.0
+missing_purchase_dayofweek,0.0,0.0,0.0
