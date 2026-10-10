@@ -1,69 +1,96 @@
-# Olist 低评分预测 · 组内协作说明
+# MSBD5001 Group Project — Olist Low-Rating Prediction
 
-> 面向 B、C 组员。回答三件事：**环境怎么配、数据怎么拿、文件怎么看**。Proposal 与期末报告承担对外内容，本文件只做内部协作用。
+研究问题：在固定模型、样本与评估协议的前提下，多表数据融合与特征工程能多大程度提升低评分（评分 ≤3）预测。完整方案见 `docs/Olist_Project_Proposal.docx`。
 
-## 1. 环境重建（不要拷贝环境文件夹）
+## 仓库结构
 
-虚拟环境与机器路径绑定，直接拷贝无法使用。请在各自机器上执行：
+```
+.
+├── README.md                                  本文件：协作说明与交接索引
+├── requirements.txt                            pip 直接依赖清单（主版本与 A 实测环境一致）
+├── environment.yml                             conda 环境配方（python 3.11 + pip）
+├── .gitignore                                  Python 临时文件忽略规则
+│
+├── data/
+│   ├── raw/                                    原始数据（只读）
+│   │   ├── olist_orders_dataset.csv            订单主表（99,441 行）
+│   │   ├── olist_order_reviews_dataset.csv     评价表（99,224 行）
+│   │   ├── olist_order_items_dataset.csv       订单商品明细（112,650 行）
+│   │   ├── olist_order_payments_dataset.csv    支付记录（103,886 行）
+│   │   ├── olist_products_dataset.csv          商品维度表（32,951 行）
+│   │   ├── olist_customers_dataset.csv         客户表（99,441 行）
+│   │   ├── olist_sellers_dataset.csv           卖家表（3,095 行）
+│   │   ├── olist_geolocation_dataset.csv       地理坐标（1,000,163 行，可选，核心不使用）
+│   │   ├── product_category_name_translation.csv  类别英文翻译（71 行）
+│   │   └── checksums.md5                       原始数据 MD5 校验和
+│   └── processed/                              处理产物（parquet 权威 + 同名 CSV 兜底）
+│       ├── audit_summary.csv                   9 表审计概况
+│       ├── audit_findings.csv                  25 条专项发现（质量坑点与处理口径）
+│       ├── keys_for_join.csv                   表连接关系（B 的开工依据）
+│       ├── labels.parquet / labels.csv         一单一标签（98,643 单）
+│       ├── sample_flow.csv                     筛选漏斗逐步记录
+│       ├── split_ids.csv                       按送达时间 70/15/15 划分
+│       ├── split_checks.csv                    划分检查（含真实客户跨段重叠率）
+│       ├── base_orders.parquet / base_orders.csv  建模主表（87,514 × 16）
+│       └── eda_train_summary.csv               train/val/test EDA 汇总
+│
+├── notebooks/                                  数据管线脚本
+│   ├── 01_audit.py                             数据审计
+│   ├── 01_labels_sample.py                     标签构造 + 样本筛选
+│   ├── 01_split.py                             固定划分
+│   └── 01_base.py                              主表组装 + EDA
+│
+├── outputs/figures/                            EDA 图（5 张）
+│   ├── fig_class_distribution.png              训练集类别分布
+│   ├── fig_missingness.png                     特征缺失率
+│   ├── fig_feature_histograms.png              连续特征直方图
+│   ├── fig_split_timeline.png                  按月 × split 订单量
+│   └── fig_lowrate_drift.png                   低评率时间漂移 + 划分边界
+│
+└── docs/
+    ├── Olist_Project_Proposal.docx             Proposal 方案（英文）
+    ├── Olist_Team_Execution_Plan.docx          组内执行计划与分工
+    ├── 课程要求.txt                             MSBD5001 课程项目要求
+    └── A_work_log.md                           A 的工作记录（报告/PPT 文本依据）
+```
+
+## 环境搭建
+
+Python 3.11（conda）。虚拟环境与机器路径绑定，需各自重建，不可拷贝：
 
 ```bash
-conda env create -f environment.yml   # ① 创建 olist 环境（python 3.11）
-conda activate olist                  # ② 激活
-pip install -r requirements.txt       # ③ 安装直接依赖（间接依赖由 pip 自动解析）
+conda env create -f environment.yml
+conda activate olist
+pip install -r requirements.txt          # 安装缓慢可加清华镜像：-i https://pypi.tuna.tsinghua.edu.cn/simple
 python -c "import pandas, sklearn, pyarrow; print(pandas.__version__, sklearn.__version__, pyarrow.__version__)"
 ```
 
-预期输出的主版本应与 A 的一致（pandas 3.x / scikit-learn 1.9 / pyarrow 26.x）。安装缓慢可加清华镜像：
+依赖主版本预期：pandas 3.x / scikit-learn 1.9 / pyarrow 26.x。`requirements.txt` 只列直接依赖，间接依赖由 pip 自动解析。
 
-```bash
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-```
+## 数据
 
-## 2. 原始数据获取与校验
+- 来源：[Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)（Kaggle），下载日期 2026-10-09
+- 数据已随仓库提交；若经共享盘分发，解压到 `data/raw/` 后校验：`md5sum -c data/raw/checksums.md5`
+- 原始 CSV 只读，处理结果一律写入 `data/processed/`
 
-原始数据通过共享盘分发（Kaggle 需登录，A 已下载并分发）。解压到 `data/raw/` 后**必须校验 MD5**：
+## 数据管线与复现
 
-```bash
-md5sum -c data/raw/checksums.md5   # Linux / Git Bash
-```
+四个脚本互相独立、均从 `data/raw` 重建并带断言，按序运行即可复现全部产物：
 
-Windows PowerShell 可用 `Get-FileHash` 与 `checksums.md5` 中的值逐个比对。
+| 脚本 | 产出 |
+|---|---|
+| `notebooks/01_audit.py` | `audit_summary.csv`、`audit_findings.csv`、`keys_for_join.csv` |
+| `notebooks/01_labels_sample.py` | `labels`（98,643 单）、`sample_flow.csv`（99,441 → 87,514） |
+| `notebooks/01_split.py` | `split_ids.csv`、`split_checks.csv` |
+| `notebooks/01_base.py` | `base_orders`（87,514 × 16）、`eda_train_summary.csv`、EDA 图 |
 
-- 来源：https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce（下载日期 2026-10-09）
-- 9 个 CSV：orders 99,441 / reviews 99,224 / items 112,650 / payments 103,886 / products 32,951 / customers 99,441 / sellers 3,095 / geolocation 1,000,163 / translation 71（行）
-- **原始 CSV 只读**，任何处理结果写入 `data/processed/`
+## B/C 交接指引
 
-## 3. 目录约定
+**B（融合与特征）**：开工前先读 `data/processed/keys_for_join.csv`（每张表的连接关系与聚合要求），再读 `audit_findings.csv` 中 table 为 items / payments / products 的条目（已知坑点）。输入为 `base_orders.parquet`；产出写入 `notebooks/02_*.py`，交付 `master_orders` 与 `features.json`。
 
-```
-data/raw/        原始 CSV（只读）
-data/processed/  清洗后主表、划分、审计文件（交接用）
-notebooks/       01 A 数据准备 / 02 B 融合特征 / 03 C 建模
-src/             可重复运行的脚本
-outputs/         metrics、figures
-docs/            proposal、报告、A 的工作记录
-```
+**C（模型与评估）**：读 `audit_findings.csv` 中 table 为 reviews / orders 的条目（标签与样本口径）。输入为 `base_orders.parquet` + `split_ids.csv`。注意两点：`split_ids.csv` 的送达日期列仅用于切分审计，不进入模型特征；低评率随月份漂移（见 `split_checks.csv` 与 `fig_lowrate_drift.png`），验证集所选阈值应用到测试集时需留意。产出写入 `notebooks/03_*.py`。
 
-## 4. 交接规则
+## 其他
 
-- 以 `order_id` 为交接索引；B 不得悄悄删除订单，C 不得重新随机划分
-- 任何样本改动需全组同意，并更新数据版本、划分与全部实验，不把不同版本结果放同一张表
-- 格式组规：`data/processed/` 下凡 parquet 必有同名 CSV——parquet 为**权威工作格式**（pipeline 用它，类型不丢、读写快），CSV 为**通用副本**（应急/抽查/Excel 快看），两者由同一脚本生成，天然同步
-- A 的交付：`audit_summary.csv`、`audit_findings.csv`、`keys_for_join.csv`、`sample_flow.csv`、`base_orders.parquet/csv`、`split_ids.csv`、`split_checks.csv`
-
-## 5. 给 B/C 的阅读指路（审计结论已全部落盘，无需运行任何脚本）
-
-- **给 B**：先看 `data/processed/keys_for_join.csv`（每张表怎么连、要不要先聚合），再看 `audit_findings.csv` 中 table 为 items / payments / products 的行（坑在哪）
-- **给 C**：看 `audit_findings.csv` 中 table 为 reviews / orders 的行（标签与样本怎么定的）；主表与划分直接读 `base_orders.parquet` + `split_ids.csv`
-- 注意：`split_ids.csv` 的 `order_delivered_customer_date` 列**仅用于切分审计**（验证时间顺序），禁作特征；C 建模以 `base_orders.parquet` + `split` 列为准
-
-## 6. 复现 A 的产出
-
-四个脚本互相独立、都从 `data/raw` 重建并带断言，按序运行即可复现全部产物：
-
-```bash
-python notebooks/01_audit.py           # → audit_summary / audit_findings / keys_for_join
-python notebooks/01_labels_sample.py   # → labels（双格式）、sample_flow
-python notebooks/01_split.py           # → split_ids、split_checks
-python notebooks/01_base.py            # → base_orders（双格式）、EDA 图
-```
+- 以 `order_id` 为交接索引；不删除订单、不重新随机划分
+- `data/processed/` 下凡 parquet 必有同名 CSV（parquet 为权威工作格式，CSV 为通用副本）

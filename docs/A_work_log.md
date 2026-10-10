@@ -14,7 +14,7 @@
 ## 1. 环境与共享资产
 
 - 创建 `olist` conda 环境（python 3.11.17）：pandas 3.0.6 / numpy 2.4.6 / scikit-learn 1.9.1 / pyarrow 26.0.0 / matplotlib 3.11.2 / seaborn 0.13.2
-- 交付：`requirements.txt`（9 行直接依赖 + 实测版本下限）、`environment.yml`、`data/raw/checksums.md5`、`README.md`（组内协作说明，由 SETUP.md 迁移润色而来）
+- 交付：`requirements.txt`（9 行直接依赖 + 实测版本下限）、`environment.yml`、`data/raw/checksums.md5`、`README.md`
 - 修正记录：初版 requirements 为 pip freeze 全量导出（114 行），含本地路径 `packaging @ file://...` 与 Windows 专属 `pywinpty` 两个"必炸"项 → 按评审改为直接依赖精简版
 
 ## 2. Step 1 数据审计
