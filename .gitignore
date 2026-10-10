@@ -2,5 +2,7 @@
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+.venv/
+venv/
 
 # 数据纳入版本库（全组决定：clone 即开工，见 README 第 2 节的 MD5 校验流程）
