@@ -1,0 +1,12 @@
+# Olist project - direct dependencies 
+# Lower bounds match A's tested versions (pandas 3.x / numpy 2.4 / scikit-learn 1.9 / pyarrow 26.x);
+# transitive deps resolved by pip automatically for cross-platform stability.
+pandas>=3.0
+numpy>=2.4
+scikit-learn>=1.9
+matplotlib>=3.11
+seaborn>=0.13
+pyarrow>=26.0
+jupyterlab>=4.2
+notebook>=7.2
+kaggle>=1.7

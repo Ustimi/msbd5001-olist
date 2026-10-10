@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# 数据不进版本库：走共享盘 + MD5 校验（见 README 第 2 节），脚本可从 raw 完整复现全部产物
+# 若全组决定把数据纳入 git，删除下面两行即可
+data/raw/
+data/processed/

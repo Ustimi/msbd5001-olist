@@ -1,0 +1,10 @@
+# Olist 项目统一环境配方（2026-10-10 由 A 导出）
+# 用法：conda env create -f environment.yml
+# 然后：conda activate olist && pip install -r requirements.txt
+name: olist
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
