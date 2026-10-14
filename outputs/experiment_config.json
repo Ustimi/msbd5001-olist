@@ -1,0 +1,84 @@
+{
+  "seed": 42,
+  "label": "low_rating",
+  "split": "split",
+  "id": "order_id",
+  "feature_spec": "data/processed/02_features.json",
+  "stages": [
+    "E1",
+    "E2",
+    "E3"
+  ],
+  "models": [
+    "logreg",
+    "rf"
+  ],
+  "baseline_model": "dummy",
+  "threshold_rule": "验证集 F1 最大；同分取较高阈值",
+  "threshold_grid": [
+    0.05,
+    0.1,
+    0.15,
+    0.2,
+    0.25,
+    0.3,
+    0.35,
+    0.4,
+    0.45,
+    0.5,
+    0.55,
+    0.6,
+    0.65,
+    0.7,
+    0.75,
+    0.8,
+    0.85,
+    0.9,
+    0.95
+  ],
+  "tune_metric": "average_precision",
+  "tune_on": "val",
+  "final_eval_on": "test",
+  "class_weight_options": [
+    null,
+    "balanced"
+  ],
+  "use_smote": false,
+  "logreg_params": {
+    "C": [
+      0.1,
+      1.0,
+      10.0
+    ],
+    "max_iter": 2000,
+    "solver": "lbfgs"
+  },
+  "rf_params": {
+    "n_estimators": [
+      300,
+      500
+    ],
+    "max_depth": [
+      null,
+      10,
+      20
+    ],
+    "min_samples_leaf": [
+      1,
+      5
+    ]
+  },
+  "bootstrap_n": 1000,
+  "bootstrap_unit": "test_orders_paired",
+  "missing_indicator": true,
+  "clip_quantile": null,
+  "low_freq_category_threshold": null,
+  "notes": [
+    "阈值只在验证集选择，绝不在 test 上挑阈值。",
+    "SMOTE 不使用。",
+    "E1/E2/E3 使用同一批 order_id 与同一 split。",
+    "purchase_month / purchase_hour / purchase_dayofweek 的归属：暂按 B 的 02_features.json 版本归入 E1，并累计进入 E2/E3。",
+    "此项为待 A 和 C 组会确认的暂定决策；若组会改为归 E3，必须同步修改 02_features.json 并重跑所有实验。",
+    "旧 metrics 保留旧 config_hash；新实验只使用最新 config_hash。"
+  ]
+}

@@ -1,0 +1,5 @@
+check,ok
+三表 order_id 集合一致,True
+split 与 split_ids.csv 一致,True
+E1/E2/E3 白名单无禁止列,True
+E1 ⊆ E2 ⊆ E3,True

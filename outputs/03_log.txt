@@ -1,0 +1,64 @@
+input_check_log:
+
+config_hash = b87da4113d0531db6784a1c61e906ced
+
+===== E1 =====
+X shape: (87514, 5)
+y mean (低评率): 0.175
+  train: n=61260, 低评率=0.1822
+  val: n=13127, 低评率=0.1642
+  test: n=13127, 低评率=0.1524
+X 缺失: {'order_approved_wait_days': 14}
+
+===== E2 =====
+X shape: (87514, 18)
+y mean (低评率): 0.175
+  train: n=61260, 低评率=0.1822
+  val: n=13127, 低评率=0.1642
+  test: n=13127, 低评率=0.1524
+X 缺失: {'order_approved_wait_days': 14, 'avg_product_weight_g': 16}
+
+===== E3 =====
+X shape: (87514, 25)
+y mean (低评率): 0.175
+  train: n=61260, 低评率=0.1822
+  val: n=13127, 低评率=0.1642
+  test: n=13127, 低评率=0.1524
+X 缺失: {'order_approved_wait_days': 14, 'avg_product_weight_g': 16}
+
+全部读取与断言通过。
+
+feature_split_log:
+
+E1 num: 2 cat: 3 bin: 0
+  num: ['order_approved_wait_days', 'estimated_delivery_days']
+  cat: ['purchase_month', 'purchase_hour', 'purchase_dayofweek']
+  bin: []
+E2 num: 11 cat: 5 bin: 2
+  num: ['order_approved_wait_days', 'estimated_delivery_days', 'order_item_count', 'seller_count', 'total_price', 'total_freight', 'avg_product_weight_g', 'payment_total', 'payment_count', 'max_installments', 'payment_type_count']
+  cat: ['purchase_month', 'purchase_hour', 'purchase_dayofweek', 'customer_state', 'customer_city']
+  bin: ['has_credit_card', 'has_voucher']
+E3 num: 15 cat: 5 bin: 5
+  num: ['order_approved_wait_days', 'estimated_delivery_days', 'order_item_count', 'seller_count', 'total_price', 'total_freight', 'avg_product_weight_g', 'payment_total', 'payment_count', 'max_installments', 'payment_type_count', 'delivery_duration_days', 'delivery_delay_days', 'freight_ratio', 'same_state_share']
+  cat: ['purchase_month', 'purchase_hour', 'purchase_dayofweek', 'customer_state', 'customer_city']
+  bin: ['has_credit_card', 'has_voucher', 'late_delivery', 'invalid_price', 'multi_seller']
+
+预处理Pipeline:
+
+E1 / logreg: train (61260, 46), val (13127, 46)
+E1 / rf: train (61260, 46), val (13127, 46)
+E2 / logreg: train (61260, 3689), val (13127, 3689)
+E2 / rf: train (61260, 3689), val (13127, 3689)
+E3 / logreg: train (61260, 3696), val (13127, 3696)
+E3 / rf: train (61260, 3696), val (13127, 3696)
+
+最终运行结果：
+config_hash = b87da4113d0531db6784a1c61e906ced
+输入检查通过。
+===== E0 Dummy =====
+[E1/dummy] val AP=0.1642 F1=0.0000 t=0.50 | test AP=0.1524 F1=0.0000
+===== E1 + LogReg =====
+[E1/logreg] val AP=0.1820 F1=0.2850 t=0.15 | test AP=0.1771 F1=0.2581
+===== E1 + RF =====
+[E1/rf] val AP=0.1657 F1=0.2803 t=0.05 | test AP=0.1607 F1=0.2594
+完成。metrics 见 outputs/metrics.csv
