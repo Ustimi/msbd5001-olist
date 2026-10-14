@@ -1,0 +1,80 @@
+{
+  "prediction_time": "Actual customer delivery, before first review",
+  "timestamp_policy": "Naive Olist timestamps consistently compared as supplied; fractional days = seconds / 86400; no date truncation",
+  "review_policy": "Review creation time used only for temporal validation; review fields never predictors",
+  "excluded_predictors": [
+    "order_id",
+    "customer_id",
+    "customer_zip_code_prefix",
+    "split",
+    "low_rating",
+    "review_id",
+    "review_score",
+    "review_creation_date",
+    "n_reviews",
+    "order_purchase_timestamp",
+    "order_delivered_customer_date",
+    "order_estimated_delivery_date"
+  ],
+  "E3": {
+    "delivery_duration_days": {
+      "formula": "(actual_delivery - purchase).total_seconds / 86400",
+      "source_tables": [
+        "orders"
+      ],
+      "available_at": "customer delivery",
+      "missing_policy": "Missing if either timestamp is missing"
+    },
+    "delivery_delay_days": {
+      "formula": "(actual_delivery - estimated_delivery).total_seconds / 86400; signed",
+      "source_tables": [
+        "orders"
+      ],
+      "available_at": "customer delivery",
+      "missing_policy": "Missing if either timestamp is missing; early delivery stays negative"
+    },
+    "late_delivery": {
+      "formula": "1 if actual_delivery > estimated_delivery else 0",
+      "source_tables": [
+        "orders"
+      ],
+      "available_at": "customer delivery",
+      "missing_policy": "Missing if either timestamp is missing"
+    },
+    "freight_ratio": {
+      "formula": "total_freight / total_price where total_price > 0",
+      "source_tables": [
+        "items"
+      ],
+      "available_at": "customer delivery",
+      "missing_policy": "Missing for missing/nonpositive price or missing freight"
+    },
+    "invalid_price": {
+      "formula": "1 if total_price is missing or <= 0 else 0",
+      "source_tables": [
+        "items"
+      ],
+      "available_at": "customer delivery",
+      "missing_policy": "Always defined"
+    },
+    "multi_seller": {
+      "formula": "1 if seller_count > 1 else 0",
+      "source_tables": [
+        "items"
+      ],
+      "available_at": "customer delivery",
+      "missing_policy": "Missing if seller_count is missing"
+    },
+    "same_state_share": {
+      "formula": "same-state item rows / item rows with both seller and customer state available",
+      "source_tables": [
+        "items",
+        "sellers",
+        "orders",
+        "customers"
+      ],
+      "available_at": "customer delivery",
+      "missing_policy": "Missing when no item rows have both states"
+    }
+  }
+}
