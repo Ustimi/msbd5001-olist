@@ -1,0 +1,4 @@
+﻿join,key,validation,rows_before,lookup_rows,rows_after,matched_rows,unmatched_rows,match_rate,left_key_unique,lookup_key_unique,output_order_id_unique,output_unique_orders,output_duplicate_orders,order_set_preserved
+02_items_agg,order_id,one_to_one,87514,98666,87514,87514,0,1.0,True,True,True,87514,0,True
+02_payments_agg,order_id,one_to_one,87514,99440,87514,87514,0,1.0,True,True,True,87514,0,True
+02_customers_lookup,customer_id,many_to_one,87514,99441,87514,87514,0,1.0,True,True,True,87514,0,True
