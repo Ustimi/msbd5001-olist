@@ -189,6 +189,45 @@ def load_stage(stage: str) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
 
     return X, y, split
 
+def load_ablation_stage(variant: str):
+    assert variant in ABLATION_COLS, f"未知消融: {variant}"
+
+    data_path = ROOT / spec["datasets"]["E3"]
+    df = pd.read_parquet(data_path)
+
+    assert df[ID].is_unique and df[ID].notna().all()
+    assert len(df) == EXPECTED_N
+
+    split_ids = pd.read_csv(SPLIT_IDS_PATH)
+    split_ids = split_ids[[ID, SPLIT]].rename(columns={SPLIT: "split_ref"})
+    assert split_ids[ID].is_unique
+    assert set(df[ID]) == set(split_ids[ID])
+
+    split_counts = df[SPLIT].value_counts().to_dict()
+    assert split_counts == EXPECTED_SPLIT_COUNTS
+
+    merged = df[[ID, SPLIT]].merge(
+        split_ids, on=ID, how="left", validate="one_to_one"
+    )
+    assert merged["split_ref"].notna().all()
+    assert (merged[SPLIT] == merged["split_ref"]).all()
+
+    cols = ABLATION_COLS[variant]
+    missing = set(cols) - set(df.columns)
+    assert not missing, f"{variant} 缺列: {missing}"
+    forbidden = {LABEL, SPLIT, ID}
+    assert not (forbidden & set(cols))
+
+    X = df[cols].copy()
+    for c in cols:
+        if c in CATEGORICAL_COLS:
+            X[c] = X[c].astype("string")
+
+    y = df[LABEL].copy()
+    split = df[SPLIT].copy()
+    assert set(y.dropna().unique()) <= {0, 1}
+
+    return X, y, split
 
 # ============================================================
 # 2. 构建 train / val / test mask
@@ -302,6 +341,18 @@ def compute_metrics(y_true, y_prob, threshold) -> dict:
         "threshold": float(threshold),
     }
 
+def paired_bootstrap(y_true, p_a, p_b, n=1000, seed=42):
+    rng = np.random.default_rng(seed)
+    n_samples = len(y_true)
+    diffs = []
+    for _ in range(n):
+        idx = rng.integers(0, n_samples, n_samples)
+        ap_a = average_precision_score(y_true[idx], p_a[idx])
+        ap_b = average_precision_score(y_true[idx], p_b[idx])
+        diffs.append(ap_a - ap_b)
+    diffs = np.array(diffs)
+    return diffs.mean(), np.percentile(diffs, [2.5, 97.5])
+
 def append_metrics(metrics_path: Path, record: dict) -> None:
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
     df_new = pd.DataFrame([record])
@@ -344,7 +395,7 @@ def run_experiment(stage, model_name, class_weight=None, params=None, tag=""):
     y_te = y.loc[masks["test"]]
 
     pre = make_preprocessor(stage, model_name)
-    model = make_model(model_name, class_weight, params)  # 这里传入 params
+    model = make_model(model_name, class_weight, params)
 
     X_tr_t = pre.fit_transform(X_tr)
     X_va_t = pre.transform(X_va)
@@ -366,7 +417,7 @@ def run_experiment(stage, model_name, class_weight=None, params=None, tag=""):
         "experiment": stage,
         "model": model_name,
         "class_weight": class_weight,
-        "params": str(params),  # 新增：记录参数
+        "params": str(params),
         "n_train": int(masks["train"].sum()),
         "n_val": int(masks["val"].sum()),
         "n_test": int(masks["test"].sum()),
@@ -384,7 +435,98 @@ def run_experiment(stage, model_name, class_weight=None, params=None, tag=""):
     }
     append_metrics(ROOT / "outputs" / "metrics.csv", record)
 
+    # 保存 test 预测概率，供 bootstrap 使用
+    # 从主表按 split 列筛选，取真正的 hex order_id，不用 X 的位置索引
+    test_df = pd.read_parquet(ROOT / spec["datasets"][stage]).reset_index(drop=True)
+    test_order_ids = test_df.loc[test_df[SPLIT].eq("test"), "order_id"].values
+
+    pred_path = ROOT / "outputs" / "test_predictions.csv"
+    pred_row = pd.DataFrame({
+        "order_id": test_order_ids,
+        "y_true": y_te.values,
+        "y_prob": p_te,
+        "experiment": stage,
+        "model": model_name,
+        "tag": tag,
+    })
+    if pred_path.exists():
+        pred_old = pd.read_csv(pred_path)
+        pred_row = pd.concat([pred_old, pred_row], ignore_index=True)
+    pred_row.to_csv(pred_path, index=False)
+
     print(f"[{stage}/{model_name}] "
+          f"val AP={metrics_va['AP']:.4f} F1={metrics_va['F1']:.4f} t={threshold:.2f} | "
+          f"test AP={metrics_te['AP']:.4f} F1={metrics_te['F1']:.4f}")
+
+    return record, p_va, p_te, y_va, y_te
+
+def run_ablation(variant, model_name, class_weight=None, params=None, tag=""):
+    X, y, split = load_ablation_stage(variant)
+    masks = build_masks(split)
+
+    X_tr = X.loc[masks["train"]]
+    X_va = X.loc[masks["val"]]
+    X_te = X.loc[masks["test"]]
+    y_tr = y.loc[masks["train"]]
+    y_va = y.loc[masks["val"]]
+    y_te = y.loc[masks["test"]]
+
+    pre = make_preprocessor(variant, model_name)
+    model = make_model(model_name, class_weight, params)
+
+    X_tr_t = pre.fit_transform(X_tr)
+    X_va_t = pre.transform(X_va)
+    X_te_t = pre.transform(X_te)
+
+    model.fit(X_tr_t, y_tr)
+    p_va = model.predict_proba(X_va_t)[:, 1]
+    p_te = model.predict_proba(X_te_t)[:, 1]
+
+    threshold, _ = choose_threshold(y_va, p_va, config["threshold_grid"])
+    metrics_va = compute_metrics(y_va, p_va, threshold)
+    metrics_te = compute_metrics(y_te, p_te, threshold)
+
+    record = {
+        "experiment": variant,
+        "model": model_name,
+        "class_weight": class_weight,
+        "params": str(params),
+        "n_train": int(masks["train"].sum()),
+        "n_val": int(masks["val"].sum()),
+        "n_test": int(masks["test"].sum()),
+        "AP": metrics_te["AP"],
+        "F1": metrics_te["F1"],
+        "precision": metrics_te["precision"],
+        "recall": metrics_te["recall"],
+        "ROC_AUC": metrics_te["ROC_AUC"],
+        "threshold": metrics_te["threshold"],
+        "val_AP": metrics_va["AP"],
+        "val_F1": metrics_va["F1"],
+        "seed": SEED,
+        "config_hash": config_hash,
+        "notes": tag,
+    }
+    append_metrics(ROOT / "outputs" / "metrics.csv", record)
+
+    # 保存 test 预测，从 E3 主表按 split 列筛选取 hex order_id
+    test_df = pd.read_parquet(ROOT / spec["datasets"]["E3"]).reset_index(drop=True)
+    test_order_ids = test_df.loc[test_df[SPLIT].eq("test"), "order_id"].values
+
+    pred_path = ROOT / "outputs" / "test_predictions.csv"
+    pred_row = pd.DataFrame({
+        "order_id": test_order_ids,
+        "y_true": y_te.values,
+        "y_prob": p_te,
+        "experiment": variant,
+        "model": model_name,
+        "tag": tag,
+    })
+    if pred_path.exists():
+        pred_old = pd.read_csv(pred_path)
+        pred_row = pd.concat([pred_old, pred_row], ignore_index=True)
+    pred_row.to_csv(pred_path, index=False)
+
+    print(f"[{variant}/{model_name}] "
           f"val AP={metrics_va['AP']:.4f} F1={metrics_va['F1']:.4f} t={threshold:.2f} | "
           f"test AP={metrics_te['AP']:.4f} F1={metrics_te['F1']:.4f}")
 
