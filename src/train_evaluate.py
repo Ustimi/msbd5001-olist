@@ -66,7 +66,32 @@ BINARY_COLS = {
     "invalid_price",
 }
 
+_ABLATION_DROP = {
+    "E3_no_delivery": {
+        "delivery_duration_days",
+        "delivery_delay_days",
+        "late_delivery",
+    },
+    "E3_no_payment": {
+        "payment_total", "payment_count",
+        "max_installments", "payment_type_count",
+        "has_credit_card", "has_voucher",
+    },
+    "E3_no_product": {
+        "order_item_count", "seller_count",
+        "total_price", "total_freight",
+        "avg_product_weight_g", "multi_seller",
+    },
+    "E3_no_geo": {
+        "customer_state", "customer_city",
+        "same_state_share",
+    },
+}
 
+ABLATION_COLS = {
+    name: [c for c in spec["E3"] if c not in drop]
+    for name, drop in _ABLATION_DROP.items()
+}
 
 # ============================================================
 # 1. 读一个 stage 的数据，并做核心断言
@@ -187,8 +212,11 @@ def build_masks(split: pd.Series) -> dict:
 # 3. 列分类：把特征分成数值 / 类别 / 二元
 # ============================================================
 
-def split_feature_columns(stage: str) -> tuple[list, list, list]:
-    cols = spec[stage]
+def split_feature_columns(stage: str):
+    if stage in ABLATION_COLS:
+        cols = ABLATION_COLS[stage]
+    else:
+        cols = spec[stage]
     num_cols = [c for c in cols if c not in CATEGORICAL_COLS | BINARY_COLS]
     cat_cols = [c for c in cols if c in CATEGORICAL_COLS]
     bin_cols = [c for c in cols if c in BINARY_COLS]
@@ -229,12 +257,13 @@ def make_preprocessor(stage: str, model_name: str) -> ColumnTransformer:
 # 5. 模型工厂
 # ============================================================
 
-def make_model(model_name: str, class_weight=None):
+def make_model(model_name, class_weight=None, params=None):
+    params = params or {}
     if model_name == "dummy":
         return DummyClassifier(strategy="most_frequent", random_state=SEED)
     if model_name == "logreg":
         return LogisticRegression(
-            C=1.0,
+            C=params.get("C", 1.0),
             max_iter=config["logreg_params"]["max_iter"],
             solver=config["logreg_params"]["solver"],
             class_weight=class_weight,
@@ -242,7 +271,9 @@ def make_model(model_name: str, class_weight=None):
         )
     if model_name == "rf":
         return RandomForestClassifier(
-            n_estimators=300,
+            n_estimators=params.get("n_estimators", 300),
+            max_depth=params.get("max_depth", None),
+            min_samples_leaf=params.get("min_samples_leaf", 1),
             class_weight=class_weight,
             random_state=SEED,
             n_jobs=-1,
@@ -301,12 +332,9 @@ def append_metrics(metrics_path: Path, record: dict) -> None:
 
     df_all.to_csv(metrics_path, index=False)
 
-def run_experiment(stage, model_name, class_weight=None, tag=""):
+def run_experiment(stage, model_name, class_weight=None, params=None, tag=""):
     X, y, split = load_stage(stage)
     masks = build_masks(split)
-
-    pre = make_preprocessor(stage, model_name)
-    model = make_model(model_name, class_weight)
 
     X_tr = X.loc[masks["train"]]
     X_va = X.loc[masks["val"]]
@@ -315,33 +343,30 @@ def run_experiment(stage, model_name, class_weight=None, tag=""):
     y_va = y.loc[masks["val"]]
     y_te = y.loc[masks["test"]]
 
-    # 只在 train 上 fit 预处理
+    pre = make_preprocessor(stage, model_name)
+    model = make_model(model_name, class_weight, params)  # 这里传入 params
+
     X_tr_t = pre.fit_transform(X_tr)
     X_va_t = pre.transform(X_va)
     X_te_t = pre.transform(X_te)
 
-    # 训练
+    model.fit(X_tr_t, y_tr)
+    p_va = model.predict_proba(X_va_t)[:, 1]
+    p_te = model.predict_proba(X_te_t)[:, 1]
+
     if model_name == "dummy":
-        # Dummy 只预测概率，通常全为众数，阈值无意义
-        model.fit(X_tr_t, y_tr)
-        p_va = model.predict_proba(X_va_t)[:, 1]
-        p_te = model.predict_proba(X_te_t)[:, 1]
-        threshold, val_f1 = 0.5, None
+        threshold = 0.5
     else:
-        model.fit(X_tr_t, y_tr)
-        p_va = model.predict_proba(X_va_t)[:, 1]
-        p_te = model.predict_proba(X_te_t)[:, 1]
-        threshold, val_f1 = choose_threshold(
-            y_va, p_va, config["threshold_grid"]
-        )
+        threshold, _ = choose_threshold(y_va, p_va, config["threshold_grid"])
 
     metrics_va = compute_metrics(y_va, p_va, threshold)
     metrics_te = compute_metrics(y_te, p_te, threshold)
 
     record = {
-        "experiment": stage if stage != "E0" else "E0",
+        "experiment": stage,
         "model": model_name,
         "class_weight": class_weight,
+        "params": str(params),  # 新增：记录参数
         "n_train": int(masks["train"].sum()),
         "n_val": int(masks["val"].sum()),
         "n_test": int(masks["test"].sum()),
@@ -357,7 +382,6 @@ def run_experiment(stage, model_name, class_weight=None, tag=""):
         "config_hash": config_hash,
         "notes": tag,
     }
-
     append_metrics(ROOT / "outputs" / "metrics.csv", record)
 
     print(f"[{stage}/{model_name}] "
@@ -378,6 +402,65 @@ def run_feasibility():
 
     print("完成。metrics 见 outputs/metrics.csv")
 
+def tune_params(stage, model_name, class_weight=None):
+    """
+    在验证集上用小网格选参数，指标用 average_precision。
+    返回 (best_params, best_val_ap)。
+    不写 metrics.csv，只负责选参。
+    """
+    X, y, split = load_stage(stage)
+    masks = build_masks(split)
+
+    X_tr = X.loc[masks["train"]]
+    X_va = X.loc[masks["val"]]
+    y_tr = y.loc[masks["train"]]
+    y_va = y.loc[masks["val"]]
+
+    pre = make_preprocessor(stage, model_name)
+    X_tr_t = pre.fit_transform(X_tr)
+    X_va_t = pre.transform(X_va)
+
+    if model_name == "logreg":
+        grid = [(C, cw)
+                for C in config["logreg_params"]["C"]
+                for cw in ([class_weight] if class_weight is not None
+                           else config["class_weight_options"])]
+    elif model_name == "rf":
+        grid = [(n, d, l, cw)
+                for n in config["rf_params"]["n_estimators"]
+                for d in config["rf_params"]["max_depth"]
+                for l in config["rf_params"]["min_samples_leaf"]
+                for cw in ([class_weight] if class_weight is not None
+                           else config["class_weight_options"])]
+    else:
+        raise ValueError(f"调参不支持模型: {model_name}")
+
+    best_ap, best_params = -1.0, None
+    for params in grid:
+        if model_name == "logreg":
+            C, cw = params
+            m = LogisticRegression(
+                C=C,
+                max_iter=config["logreg_params"]["max_iter"],
+                solver=config["logreg_params"]["solver"],
+                class_weight=cw,
+                random_state=SEED,
+            )
+        else:
+            n, d, l, cw = params
+            m = RandomForestClassifier(
+                n_estimators=n, max_depth=d, min_samples_leaf=l,
+                class_weight=cw, random_state=SEED, n_jobs=-1,
+            )
+        m.fit(X_tr_t, y_tr)
+        p_va = m.predict_proba(X_va_t)[:, 1]
+        ap = average_precision_score(y_va, p_va)
+        if ap > best_ap:
+            best_ap, best_params = ap, params
+
+    print(f"[tune] {stage}/{model_name}: best val AP={best_ap:.4f}, params={best_params}")
+    return best_params, best_ap
+
 # ============================================================
 # 6. 主流程：先跑通读取与断言
 # ============================================================
@@ -391,8 +474,16 @@ def main():
         build_masks(split)
     print("输入检查通过。")
 
-    # 跑可行性 baseline
-    run_feasibility()
+    for name, cols in ABLATION_COLS.items():
+        assert cols, f"{name} 为空"
+        assert len(cols) == len(set(cols)), f"{name} 有重复"
+        assert set(cols) <= set(spec["E3"]), f"{name} 不是 E3 子集"
+        assert set(spec["E3"]) - set(cols) == _ABLATION_DROP[name], \
+            f"{name} 去掉的列与声明不符"
+
+    print("消融清单:")
+    for name, cols in ABLATION_COLS.items():
+        print(f"  {name}: {len(cols)} 列")
 
 
 if __name__ == "__main__":
